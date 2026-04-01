@@ -229,6 +229,9 @@ model PaymentAttempt {
   amountMinor       Int      @map("amount_minor")
   currency          String
   status            String
+  paymentType       String?  @map("payment_type")
+  failureReason     String?  @map("failure_reason")
+  metadataJson      String?  @map("metadata_json")
   rawPayloadJson    String?  @map("raw_payload_json")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -237,7 +240,9 @@ model PaymentAttempt {
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerReference])
-  @@index([provider, providerReference])
+  @@index([orderId]) // For order payment lookup
+  @@index([status]) // For payment status filtering
+  @@index([provider, status]) // For provider-specific filtering
   @@map("payment_attempts")
 }
 
