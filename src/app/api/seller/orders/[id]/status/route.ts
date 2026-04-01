@@ -1,67 +1,48 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/server/db/prisma'
 import { getCurrentUser, requireSeller } from '@/server/lib/auth'
-import { withParamsValidation, withValidation, ApiError } from '@/server/lib/errors'
+import { ApiError, withParamsValidation, withValidation } from '@/server/lib/errors'
 import { IdSchema, UpdateOrderStatusSchema } from '@/server/lib/validation'
-import { isValidOrderTransition, OrderTransitionError } from '@/server/modules/orders/transitions'
-import { OrderStatus } from '@prisma/client'
+import { OrderStatus } from '@/server/modules/orders/transitions'
+import { orderService } from '@/server/services/order.service'
+import { NextRequest, NextResponse } from 'next/server'
 
 async function updateOrderStatus(
   { id }: { id: string },
-  { status }: { status: OrderStatus },
+  { status, reason }: { status: keyof typeof OrderStatus; reason?: string },
   request: NextRequest
 ) {
   const user = await getCurrentUser(request)
   requireSeller(user)
 
-  // Get current order
-  const currentOrder = await prisma.order.findFirst({
-    where: {
-      id,
-      sellerId: user.sellerId!,
-    },
-  })
-
-  if (!currentOrder) {
-    throw new ApiError(404, 'Order not found')
-  }
-
-  // Validate transition
-  if (!isValidOrderTransition(currentOrder.status, status)) {
-    throw new ApiError(400, `Cannot transition from ${currentOrder.status} to ${status}`)
-  }
-
-  // Update order status and create event
-  const updatedOrder = await prisma.$transaction(async (tx) => {
-    const order = await tx.order.update({
-      where: { id },
-      data: { status },
+  try {
+    const updatedOrder = await orderService.updateOrderStatus({
+      orderId: id,
+      newStatus: status as any,
+      actorUserId: user.id,
+      reason
     })
 
-    await tx.orderEvent.create({
-      data: {
-        orderId: id,
-        actorUserId: user.id,
-        eventType: 'status_changed',
-        payloadJson: {
-          from: currentOrder.status,
-          to: status,
-          actor: user.email,
-        },
+    // Verify seller access
+    if (updatedOrder.sellerId !== user.sellerId) {
+      throw new ApiError(403, 'Access denied')
+    }
+
+    return NextResponse.json({
+      order: {
+        id: updatedOrder.id,
+        publicOrderNumber: updatedOrder.publicOrderNumber,
+        status: updatedOrder.status,
+        updatedAt: updatedOrder.updatedAt,
       },
     })
-
-    return order
-  })
-
-  return NextResponse.json({
-    order: {
-      id: updatedOrder.id,
-      publicOrderNumber: updatedOrder.publicOrderNumber,
-      status: updatedOrder.status,
-      updatedAt: updatedOrder.updatedAt,
-    },
-  })
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'OrderTransitionError') {
+        throw new ApiError(400, error.message)
+      }
+      throw new ApiError(500, error.message)
+    }
+    throw new ApiError(500, 'Unknown error')
+  }
 }
 
 export const PATCH = withParamsValidation(

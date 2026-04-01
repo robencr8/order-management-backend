@@ -1,4 +1,17 @@
-import { OrderStatus } from '@prisma/client'
+// Order status enum to match schema
+const OrderStatus = {
+  PENDING: 'PENDING',
+  CONFIRMED: 'CONFIRMED',
+  PACKED: 'PACKED',
+  OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
+  DELIVERED: 'DELIVERED',
+  CANCELLED: 'CANCELLED'
+} as const
+
+type OrderStatus = typeof OrderStatus[keyof typeof OrderStatus]
+
+export { OrderStatus }
+export type { OrderStatus as OrderStatusType }
 
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   PENDING: ['CONFIRMED', 'CANCELLED'],

@@ -25,6 +25,7 @@ export const UpdateProductSchema = CreateProductSchema.partial()
 
 export const UpdateOrderStatusSchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'PACKED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED']),
+  reason: z.string().optional(),
 })
 
 export const SellerSlugSchema = z.object({
