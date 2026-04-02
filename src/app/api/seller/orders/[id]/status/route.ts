@@ -1,13 +1,13 @@
 import { getCurrentUser, requireSeller } from '@/server/lib/auth'
 import { ApiError, withParamsValidation, withValidation } from '@/server/lib/errors'
 import { IdSchema, UpdateOrderStatusSchema } from '@/server/lib/validation'
+import { orderService } from '@/server/modules/orders/order.service'
 import { OrderStatus } from '@/server/modules/orders/transitions'
-import { orderService } from '@/server/services/order.service'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function updateOrderStatus(
   { id }: { id: string },
-  { status, reason }: { status: keyof typeof OrderStatus; reason?: string },
+  { status, reason }: { status: OrderStatus; reason?: string },
   request: NextRequest
 ) {
   const user = await getCurrentUser(request)
@@ -16,7 +16,7 @@ async function updateOrderStatus(
   try {
     const updatedOrder = await orderService.updateOrderStatus({
       orderId: id,
-      newStatus: status as any,
+      newStatus: status,
       actorUserId: user.id,
       reason
     })

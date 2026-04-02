@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/server/lib/auth'
+import { NextRequest, NextResponse } from 'next/server'
 
 async function getMe(request: NextRequest) {
   try {
@@ -13,7 +13,7 @@ async function getMe(request: NextRequest) {
         sellerId: user.sellerId,
       },
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Invalid token' },
       { status: 401 }

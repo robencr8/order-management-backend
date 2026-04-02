@@ -1,13 +1,14 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
-import { generatePublicOrderNumber } from '../src/server/lib/utils'
+import { orderService } from '../src/server/modules/orders/order.service'
+import { paymentService } from '../src/server/modules/orders/payment.service'
 
 const prisma = new PrismaClient()
 
 async function main() {
   console.log('🌱 Starting database seeding...')
 
-  // Create demo user
+  // Create demo user with proper password hash
   const hashedPassword = await bcrypt.hash('demo123', 12)
 
   const user = await prisma.user.upsert({
@@ -138,11 +139,12 @@ async function main() {
     createdCustomers.push(customer)
   }
 
-  // Create demo orders
+  // Get created products for order creation
   const demoProducts = await prisma.product.findMany({
     where: { sellerId: seller.id },
   })
 
+  // Create demo orders using the service layer
   const orders = [
     {
       customerId: createdCustomers[0].id,
@@ -170,65 +172,72 @@ async function main() {
     },
   ]
 
-  for (const orderData of orders) {
-    const items = orderData.items.map(item => {
-      const product = demoProducts.find(p => p.id === item.productId)!
-      return {
-        productId: item.productId,
-        productNameSnapshot: product.name,
-        unitPriceMinor: product.priceMinor,
-        quantity: item.quantity,
-        lineTotalMinor: product.priceMinor * item.quantity,
-      }
-    })
+  console.log('📦 Creating orders through service layer...')
 
-    const subtotalMinor = items.reduce((sum, item) => sum + item.lineTotalMinor, 0)
-    const deliveryFeeMinor = 500 // $5.00 delivery
-    const totalMinor = subtotalMinor + deliveryFeeMinor
-
-    const order = await prisma.order.create({
-      data: {
+  for (const [index, orderData] of orders.entries()) {
+    try {
+      // Create order using service layer
+      const order = await orderService.createOrder({
         sellerId: seller.id,
         customerId: orderData.customerId,
-        publicOrderNumber: generatePublicOrderNumber(),
-        subtotalMinor,
-        deliveryFeeMinor,
-        totalMinor,
-        currency: 'USD',
+        items: orderData.items,
+        deliveryFeeMinor: 500, // $5.00 delivery
         notes: orderData.notes,
-        source: 'demo_seed',
-        status: 'CONFIRMED',
-        paymentStatus: 'PENDING',
-      },
-    })
+      }, user.id)
 
-    // Create order items
-    await prisma.orderItem.createMany({
-      data: items.map(item => ({
-        orderId: order.id,
-        productId: item.productId,
-        productNameSnapshot: item.productNameSnapshot,
-        unitPriceMinor: item.unitPriceMinor,
-        quantity: item.quantity,
-        lineTotalMinor: item.lineTotalMinor,
-      })),
-    })
+      console.log(`✅ Order ${index + 1} created: ${order.publicOrderNumber}`)
 
-    // Create order events
-    await prisma.orderEvent.createMany({
-      data: [
-        {
+      // Simulate different payment scenarios
+      if (index === 0) {
+        // First order: successful payment
+        await paymentService.simulatePayment(order.id, true, user.id)
+        console.log(`💳 Order ${order.publicOrderNumber} payment completed`)
+        
+        // Advance order status
+        await orderService.applyTransition({
           orderId: order.id,
-          eventType: 'order_created',
-          payloadJson: JSON.stringify({ source: 'demo_seed' }),
-        },
-        {
+          newStatus: 'PACKED',
+          actorUserId: user.id,
+          notes: 'Ready for shipment',
+        })
+        console.log(`📦 Order ${order.publicOrderNumber} packed`)
+        
+      } else if (index === 1) {
+        // Second order: successful payment, packed
+        await paymentService.simulatePayment(order.id, true, user.id)
+        console.log(`💳 Order ${order.publicOrderNumber} payment completed`)
+        
+        await orderService.applyTransition({
           orderId: order.id,
-          eventType: 'status_changed',
-          payloadJson: JSON.stringify({ from: 'PENDING', to: 'CONFIRMED' }),
-        },
-      ],
-    })
+          newStatus: 'PACKED',
+          actorUserId: user.id,
+          notes: 'Customer notified',
+        })
+        console.log(`📦 Order ${order.publicOrderNumber} packed`)
+        
+      } else {
+        // Third order: successful payment, out for delivery
+        await paymentService.simulatePayment(order.id, true, user.id)
+        console.log(`💳 Order ${order.publicOrderNumber} payment completed`)
+        
+        await orderService.applyTransition({
+          orderId: order.id,
+          newStatus: 'PACKED',
+          actorUserId: user.id,
+        })
+        
+        await orderService.applyTransition({
+          orderId: order.id,
+          newStatus: 'OUT_FOR_DELIVERY',
+          actorUserId: user.id,
+          notes: 'With courier - ETA today',
+        })
+        console.log(`🚚 Order ${order.publicOrderNumber} out for delivery`)
+      }
+      
+    } catch (error) {
+      console.error(`❌ Failed to create order ${index + 1}:`, error)
+    }
   }
 
   console.log('✅ Database seeding completed!')
@@ -244,7 +253,9 @@ async function main() {
   console.log(`- 1 seller`)
   console.log(`- ${products.length} products`)
   console.log(`- ${customers.length} customers`)
-  console.log(`- ${orders.length} orders`)
+  console.log(`- ${orders.length} orders (with proper events and audit trail)`)
+  console.log('')
+  console.log('🎯 All data created through service layer with proper event enforcement!')
 }
 
 main()

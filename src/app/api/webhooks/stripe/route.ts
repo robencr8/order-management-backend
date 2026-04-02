@@ -1,10 +1,29 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/server/db/prisma'
 import { logger } from '@/server/lib/logger'
-import { PaymentProvider, PaymentStatus, WebhookStatus } from '@prisma/client'
+import { createOrderEvent } from '@/server/modules/orders/event.service'
+import { NextRequest, NextResponse } from 'next/server'
+
+// Payment constants (since schema uses strings, not enums)
+const PAYMENT_PROVIDER = {
+  STRIPE: 'STRIPE',
+  SIMULATOR: 'SIMULATOR',
+} as const
+
+const PAYMENT_STATUS = {
+  PENDING: 'PENDING',
+  PAID: 'PAID',
+  FAILED: 'FAILED',
+  CANCELLED: 'CANCELLED',
+} as const
+
+const WEBHOOK_STATUS = {
+  PENDING: 'PENDING',
+  PROCESSED: 'PROCESSED',
+  FAILED: 'FAILED',
+} as const
 
 // Stripe webhook signature verification (simplified)
-async function verifyStripeSignature(payload: string, signature: string): Promise<boolean> {
+async function verifyStripeSignature(_payload: string, _signature: string): Promise<boolean> {
   // In production, you would use Stripe's webhook signing secret
   // For demo purposes, we'll just return true
   return true
@@ -25,12 +44,12 @@ async function processStripeWebhook(request: NextRequest) {
     }
 
     const event = JSON.parse(body)
-    
+
     // Check for duplicate webhook
     const existingWebhook = await prisma.webhookEvent.findUnique({
       where: {
         provider_eventId: {
-          provider: PaymentProvider.STRIPE,
+          provider: PAYMENT_PROVIDER.STRIPE,
           eventId: event.id,
         },
       },
@@ -45,11 +64,11 @@ async function processStripeWebhook(request: NextRequest) {
       // Create webhook event record
       await tx.webhookEvent.create({
         data: {
-          provider: PaymentProvider.STRIPE,
+          provider: PAYMENT_PROVIDER.STRIPE,
           eventId: event.id,
           eventType: event.type,
           payloadJson: event,
-          status: WebhookStatus.PROCESSED,
+          status: WEBHOOK_STATUS.PROCESSED,
           processedAt: new Date(),
         },
       })
@@ -57,11 +76,11 @@ async function processStripeWebhook(request: NextRequest) {
       // Handle payment success
       if (event.type === 'payment_intent.succeeded') {
         const paymentIntent = event.data.object
-        
+
         // Find payment attempt
         const paymentAttempt = await tx.paymentAttempt.findFirst({
           where: {
-            provider: PaymentProvider.STRIPE,
+            provider: PAYMENT_PROVIDER.STRIPE,
             providerReference: paymentIntent.id,
           },
         })
@@ -71,7 +90,7 @@ async function processStripeWebhook(request: NextRequest) {
           await tx.paymentAttempt.update({
             where: { id: paymentAttempt.id },
             data: {
-              status: PaymentStatus.PAID,
+              status: PAYMENT_STATUS.PAID,
               rawPayloadJson: event,
             },
           })
@@ -79,24 +98,23 @@ async function processStripeWebhook(request: NextRequest) {
           // Update order payment status
           await tx.order.update({
             where: { id: paymentAttempt.orderId },
-            data: { paymentStatus: PaymentStatus.PAID },
+            data: { paymentStatus: PAYMENT_STATUS.PAID },
           })
 
-          // Create order event
-          await tx.orderEvent.create({
-            data: {
-              orderId: paymentAttempt.orderId,
-              eventType: 'payment_completed',
-              payloadJson: {
-                provider: PaymentProvider.STRIPE,
-                providerReference: paymentIntent.id,
-                amountMinor: paymentIntent.amount,
-              },
+          // Create order event through centralized service
+          await createOrderEvent(tx, {
+            orderId: paymentAttempt.orderId,
+            eventType: 'payment_completed',
+            actorUserId: null, // System event
+            payload: {
+              paymentAttemptId: paymentAttempt.id,
+              provider: 'STRIPE',
+              amount: paymentAttempt.amountMinor,
             },
           })
 
           logger.info('Payment processed successfully', {
-            provider: PaymentProvider.STRIPE,
+            provider: PAYMENT_PROVIDER.STRIPE,
             paymentIntentId: paymentIntent.id,
             orderId: paymentAttempt.orderId,
             amount: paymentIntent.amount,

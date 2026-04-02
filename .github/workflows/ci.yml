@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, production-hardening]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run migrations on test database
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: file:./test.db
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run typecheck
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm test
+        env:
+          DATABASE_URL: file:./test.db
+          NODE_ENV: test
