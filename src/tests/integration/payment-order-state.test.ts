@@ -152,6 +152,78 @@ describe('Payment completion — order state integrity', () => {
     expect(updated.paymentStatus).toBe('PAID')
   })
 
+  test('duplicate payment initiation does not create duplicate events', async () => {
+    const { order } = await seedPendingOrder()
+
+    const attempt = await PaymentService.createPaymentAttempt({
+      orderId: order.id,
+      provider: 'STRIPE',
+      amountMinor: 1000,
+      currency: 'USD',
+    })
+
+    // Call PROCESSING twice - should only create one PAYMENT_INITIATED event with providerReference
+    await PaymentService.updatePaymentStatus({
+      paymentAttemptId: attempt.id,
+      status: 'PROCESSING',
+      providerReference: 'pi_duplicate_test',
+    })
+
+    await PaymentService.updatePaymentStatus({
+      paymentAttemptId: attempt.id,
+      status: 'PROCESSING',
+      providerReference: 'pi_duplicate_test',
+    })
+
+    // Assert only one PAYMENT_INITIATED event with providerReference exists
+    const events = await prisma.orderEvent.findMany({ where: { orderId: order.id } })
+    const paymentInitiatedEvents = events.filter(e =>
+      e.eventType === 'PAYMENT_INITIATED' &&
+      e.payloadJson?.includes('pi_duplicate_test')
+    )
+    expect(paymentInitiatedEvents).toHaveLength(1)
+  })
+
+  test('duplicate COMPLETED does not duplicate side effects', async () => {
+    const { order } = await seedPendingOrder()
+
+    const attempt = await PaymentService.createPaymentAttempt({
+      orderId: order.id,
+      provider: 'STRIPE',
+      amountMinor: 1000,
+      currency: 'USD',
+    })
+
+    await PaymentService.updatePaymentStatus({
+      paymentAttemptId: attempt.id,
+      status: 'PROCESSING',
+      providerReference: 'pi_completed_duplicate_test',
+    })
+
+    // Complete payment twice
+    await PaymentService.updatePaymentStatus({
+      paymentAttemptId: attempt.id,
+      status: 'COMPLETED',
+      providerReference: 'pi_completed_duplicate_test',
+    })
+
+    await PaymentService.updatePaymentStatus({
+      paymentAttemptId: attempt.id,
+      status: 'COMPLETED',
+      providerReference: 'pi_completed_duplicate_test',
+    })
+
+    // Assert only one PAYMENT_CONFIRMED event exists
+    const events = await prisma.orderEvent.findMany({ where: { orderId: order.id } })
+    const paymentConfirmedEvents = events.filter(e => e.eventType === 'PAYMENT_CONFIRMED')
+    expect(paymentConfirmedEvents).toHaveLength(1)
+
+    // Assert order unchanged (still CONFIRMED, not double-processed)
+    const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } })
+    expect(updatedOrder?.status).toBe('CONFIRMED')
+    expect(updatedOrder?.paymentStatus).toBe('PAID')
+  })
+
   test('payment completing on an OUT_FOR_DELIVERY order does not regress status', async () => {
     const { order } = await seedPendingOrder()
 

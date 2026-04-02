@@ -127,9 +127,28 @@ export class PaymentService {
         throw new Error('Payment attempt not found')
       }
 
+      // Idempotency guard: if already in target status, no-op
+      if (currentAttempt.status === data.status) {
+        return currentAttempt
+      }
+
       // Validate status transition
       if (!this.isValidPaymentTransition(currentAttempt.status, data.status)) {
         throw new Error(`Invalid payment status transition from ${currentAttempt.status} to ${data.status}`)
+      }
+
+      // Idempotency guard: prevent duplicate provider references for COMPLETED status
+      if (data.status === 'COMPLETED' && data.providerReference) {
+        const existingCompleted = await tx.paymentAttempt.findFirst({
+          where: {
+            providerReference: data.providerReference,
+            status: 'COMPLETED',
+            id: { not: data.paymentAttemptId }
+          }
+        })
+        if (existingCompleted) {
+          throw new Error(`Payment with provider reference ${data.providerReference} already completed`)
+        }
       }
 
       // Update payment attempt

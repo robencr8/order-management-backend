@@ -66,24 +66,24 @@ export class OrderEventService {
     ORDER_PACKED: 'ORDER_PACKED',
     ORDER_OUT_FOR_DELIVERY: 'ORDER_OUT_FOR_DELIVERY',
     ORDER_DELIVERED: 'ORDER_DELIVERED',
-    
+
     // Payment events
     PAYMENT_INITIATED: 'PAYMENT_INITIATED',
     PAYMENT_CONFIRMED: 'PAYMENT_CONFIRMED',
     PAYMENT_FAILED: 'PAYMENT_FAILED',
     PAYMENT_REFUNDED: 'PAYMENT_REFUNDED',
     PAYMENT_PARTIALLY_REFUNDED: 'PAYMENT_PARTIALLY_REFUNDED',
-    
+
     // Stock events
     STOCK_RESERVED: 'STOCK_RESERVED',
     STOCK_RELEASED: 'STOCK_RELEASED',
     STOCK_ADJUSTED: 'STOCK_ADJUSTED',
-    
+
     // Notification events
     NOTIFICATION_QUEUED: 'NOTIFICATION_QUEUED',
     NOTIFICATION_SENT: 'NOTIFICATION_SENT',
     NOTIFICATION_FAILED: 'NOTIFICATION_FAILED',
-    
+
     // System events
     STATUS_CHANGED: 'STATUS_CHANGED',
     ORDER_UPDATED: 'ORDER_UPDATED',
@@ -130,6 +130,32 @@ export class OrderEventService {
       failureReason?: string
     }
   ): Promise<void> {
+    // Prevent duplicate payment events
+    const existingEvent = await tx.orderEvent.findFirst({
+      where: {
+        orderId,
+        eventType,
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
+
+    // For payment events, check if we already have this event type for this payment
+    if (existingEvent && eventType.startsWith('PAYMENT_')) {
+      const existingPayload = existingEvent.payloadJson ? JSON.parse(existingEvent.payloadJson) : {}
+
+      // If same providerReference exists, this is a duplicate
+      if (paymentData.providerReference && existingPayload.providerReference === paymentData.providerReference) {
+        return // Skip duplicate
+      }
+
+      // For terminal events (COMPLETED, FAILED, CANCELLED), don't allow duplicates
+      if (['PAYMENT_CONFIRMED', 'PAYMENT_FAILED', 'PAYMENT_CANCELLED'].includes(eventType)) {
+        return // Skip duplicate terminal event
+      }
+    }
+
     await this.createEvent(tx, {
       orderId,
       actorUserId,
