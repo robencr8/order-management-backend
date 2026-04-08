@@ -2,7 +2,6 @@ import { prisma } from '@/server/db/prisma'
 import { getCurrentUser, requireSeller } from '@/server/lib/auth'
 import { ApiError, withParamsValidation } from '@/server/lib/errors'
 import { IdSchema } from '@/server/lib/validation'
-import { eventService } from '@/server/modules/orders/event.service'
 import { NextRequest, NextResponse } from 'next/server'
 
 function safeParseJson(value: string | null) {
@@ -38,7 +37,17 @@ async function getOrderEvents(
     throw new ApiError(404, 'Order not found')
   }
 
-  const events = await eventService.getOrderEvents(id)
+  const events = await prisma.orderEvent.findMany({
+    where: { orderId: id },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      actorUserId: true,
+      eventType: true,
+      payloadJson: true,
+      createdAt: true,
+    },
+  })
 
   return NextResponse.json({
     order,

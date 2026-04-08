@@ -7,13 +7,22 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "echo \"Tests not implemented yet\" && exit 1",
-    "seed": "tsx prisma/seed-simple.ts",
+    "lint:fix": "eslint --fix",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage",
+    "test:ui": "vitest --ui",
+    "test:integration": "vitest --run src/tests/integration/",
+    "test:unit": "vitest --run src/tests/auth.test.ts src/tests/order.test.ts",
+    "seed": "tsx prisma/seed-services.ts",
+    "seed:legacy": "tsx prisma/seed.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "db:seed": "npm run db:reset && npm run seed",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.6.0",
@@ -39,9 +48,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/ui": "4.1.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "4.1.2"
   }
 }

@@ -1,75 +1,238 @@
 # Order Management Backend
 
-A backend for TikTok/Instagram seller order management system built with Next.js App Router, Prisma, and SQLite. **This is a development template - additional security and production hardening required for production use.**
+A production-grade order management system with service-oriented architecture, event sourcing, and comprehensive testing.
 
-## Features
+## 🏗️ Architecture
 
-- **Public API**: Product listing and order creation
-- **Seller Dashboard**: Order management, product management
-- **Authentication**: JWT-based auth for sellers
-- **Order Lifecycle**: Strict status transitions with audit trail
-- **Notifications**: Queue-based notification system
-- **Payment Processing**: Stripe webhook integration (idempotent)
-- **Rate Limiting**: Protection against abuse
-- **Structured Logging**: Request tracing and audit logs
+- **Service Layer**: Clean separation with `OrderService`, `PaymentService`, `EventService`
+- **Event Sourcing**: Every action creates audit events
+- **Authentication**: Real password hashing with bcrypt
+- **Rate Limiting**: Redis-backed with memory fallback
+- **Testing**: Vitest with unit and integration tests
 
-## Tech Stack
-
-- **Framework**: Next.js 15 with App Router
-- **Database**: SQLite with Prisma ORM
-- **Validation**: Zod schemas
-- **Authentication**: JWT tokens
-- **Language**: TypeScript
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 18+
-- npm or yarn
-
-### Installation
+## 🚀 Quick Start
 
 ```bash
 # Install dependencies
 npm install
 
-# Set up environment variables
-cp .env.example .env
-
-# Generate Prisma client
-npx prisma generate
-
-# Run database migrations
-npx prisma migrate dev
-
-# Seed database with demo data
-npm run seed
+# Setup database
+npm run db:seed
 
 # Start development server
 npm run dev
+
+# Run tests
+npm run test:unit
+npm run test:integration
 ```
 
-### Environment Variables
+## 📋 Available Scripts
 
-Create a `.env` file with:
+### Development
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+
+### Testing
+
+- `npm run test` - Run all tests
+- `npm run test:unit` - Run unit tests only
+- `npm run test:integration` - Run integration tests only
+- `npm run test:watch` - Run tests in watch mode
+- `npm run test:coverage` - Generate coverage report
+- `npm run test:ui` - Open test UI
+
+### Database
+
+- `npm run db:generate` - Generate Prisma client
+- `npm run db:migrate` - Run migrations
+- `npm run db:studio` - Open Prisma Studio
+- `npm run db:seed` - Reset and seed database
+- `npm run seed` - Seed database only
+
+### Code Quality
+
+- `npm run lint` - Run ESLint
+- `npm run lint:fix` - Fix ESLint issues
+- `npm run typecheck` - Run TypeScript type checking
+
+## 🏛️ Service Layer
+
+### Order Service
+
+```typescript
+import { orderService } from './server/modules/orders/order.service'
+
+// Create order with full validation and events
+const order = await orderService.createOrder({
+  sellerId,
+  customerId,
+  items: [...],
+  deliveryFeeMinor: 500,
+}, actorUserId)
+
+// Apply status transitions with validation
+await orderService.applyTransition({
+  orderId,
+  newStatus: 'PACKED',
+  actorUserId
+})
+```
+
+### Payment Service
+
+```typescript
+import { paymentService } from "./server/modules/orders/payment.service";
+
+// Simulate payment with automatic order updates
+await paymentService.simulatePayment(orderId, true, actorUserId);
+
+// Real payment processing
+await paymentService.initiatePayment({ orderId, provider });
+await paymentService.confirmPayment({ orderId, provider, providerReference });
+```
+
+### Event Service
+
+```typescript
+import { eventService } from "./server/modules/orders/event.service";
+
+// Query audit trail
+const events = await eventService.getOrderEvents(orderId);
+```
+
+## 🔐 Authentication
+
+Real authentication with password hashing:
+
+```typescript
+import { authenticateUser } from "./server/lib/auth";
+
+const { user, token } = await authenticateUser(email, password);
+```
+
+Demo credentials:
+
+- Email: `demo@seller.com`
+- Password: `demo123`
+
+## 📊 Event Sourcing
+
+Every action creates immutable events:
+
+- `order_created` - New order creation
+- `payment_initiated` - Payment started
+- `payment_completed` - Payment successful
+- `status_changed` - Order status updates
+- `payment_failed` - Payment failures
+
+## 🧪 Testing
+
+Comprehensive test suite with Vitest:
+
+```bash
+# Unit tests
+npm run test:unit
+
+# Integration tests
+npm run test:integration
+
+# Full coverage
+npm run test:coverage
+```
+
+## 🏗️ Database Schema
+
+- **Users**: Authentication and roles
+- **Sellers**: Store management
+- **Products**: Inventory with stock tracking
+- **Customers**: Customer information
+- **Orders**: Order management with status
+- **OrderItems**: Line items with snapshots
+- **OrderEvents**: Complete audit trail
+- **PaymentAttempts**: Payment processing
+
+## 🚨 Rate Limiting
+
+Redis-backed rate limiting with memory fallback:
+
+- **Public API**: 10 requests/minute
+- **Auth endpoints**: 5 requests/minute
+- **Seller API**: 100 requests/minute
+
+## 📝 Logging
+
+Structured JSON logging with request IDs:
+
+```typescript
+logger.info("Order created", { orderId, sellerId });
+logger.error("Payment failed", { orderId, reason });
+```
+
+## 🔄 State Machines
+
+### Order Status Transitions
+
+```
+PENDING → CONFIRMED → PACKED → OUT_FOR_DELIVERY → DELIVERED
+    ↓         ↓         ↓           ↓
+  CANCELLED  CANCELLED  CANCELLED  CANCELLED
+```
+
+### Payment Status Transitions
+
+```
+PENDING → PROCESSING → COMPLETED → REFUNDED
+    ↓         ↓
+  FAILED    FAILED
+```
+
+## 🌍 Environment Variables
 
 ```env
+# Database
 DATABASE_URL="file:./dev.db"
-JWT_SECRET="your-super-secret-jwt-key-change-in-production"
-NEXTAUTH_SECRET="your-nextauth-secret-change-in-production"
-NEXTAUTH_URL="http://localhost:3000"
+
+# Authentication
+JWT_SECRET="your-jwt-secret"
+
+# Rate Limiting (Optional)
+REDIS_URL="redis://localhost:6379"
 ```
 
-### Demo Credentials
+## 📦 Production Deployment
 
-After seeding, use these credentials to test:
+1. Build the application:
 
-- **Email**: demo@seller.com
-- **Password**: demo123
-- **Seller Slug**: demo-store
+```bash
+npm run build
+```
 
-## API Endpoints
+2. Set production environment variables
+
+3. Run database migrations:
+
+```bash
+npm run db:deploy
+```
+
+4. Start the server:
+
+```bash
+npm run start
+```
+
+## 🧹 Development Cleanup
+
+Reset development environment:
+
+```bash
+npm run db:seed
+```
+
+## 📚 API Documentation
 
 ### Public Endpoints
 
@@ -92,172 +255,14 @@ After seeding, use these credentials to test:
 - `PATCH /api/seller/products/{id}` - Update product
 - `DELETE /api/seller/products/{id}` - Delete product
 
-### Webhooks
+## 🤝 Contributing
 
-- `POST /api/webhooks/stripe` - Stripe payment webhooks
-- `POST /api/webhooks/whatsapp` - WhatsApp webhooks
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests: `npm run test`
+5. Submit a pull request
 
-## Order Status Transitions
+## 📄 License
 
-Allowed transitions:
-
-- `PENDING` → `CONFIRMED` | `CANCELLED`
-- `CONFIRMED` → `PACKED` | `CANCELLED`
-- `PACKED` → `OUT_FOR_DELIVERY`
-- `OUT_FOR_DELIVERY` → `DELIVERED`
-- `DELIVERED` (terminal)
-- `CANCELLED` (terminal)
-
-## Database Schema
-
-The system uses these core entities:
-
-- **Users** - Authentication and roles
-- **Sellers** - Store information and branding
-- **Products** - Product catalog
-- **Customers** - Customer information
-- **Orders** - Order management
-- **OrderItems** - Order line items
-- **OrderEvents** - Audit trail
-- **NotificationJobs** - Notification queue
-- **PaymentAttempts** - Payment tracking
-- **WebhookEvents** - Webhook deduplication
-
-## Development
-
-### Available Scripts
-
-```bash
-npm run dev          # Start development server
-npm run build        # Build for production
-npm run start        # Start production server
-npm run lint         # Run ESLint
-npm run test         # Run tests
-npm run seed         # Seed database
-npm run db:generate  # Generate Prisma client
-npm run db:migrate   # Run migrations
-npm run db:studio    # Open Prisma Studio
-```
-
-### Project Structure
-
-```
-src/
-├── app/
-│   └── api/
-│       ├── auth/
-│       ├── me/
-│       ├── public/
-│       │   └── [sellerSlug]/
-│       ├── seller/
-│       │   ├── orders/
-│       │   └── products/
-│       └── webhooks/
-└── server/
-    ├── db/
-    │   └── prisma.ts
-    ├── lib/
-    │   ├── auth.ts
-    │   ├── errors.ts
-    │   ├── logger.ts
-    │   ├── rate-limit.ts
-    │   ├── utils.ts
-    │   └── validation.ts
-    └── modules/
-        ├── auth/
-        ├── orders/
-        ├── notifications/
-        └── payments/
-```
-
-## Security Features
-
-- **JWT Authentication**: Secure token-based auth
-- **Rate Limiting**: Prevent abuse on public endpoints
-- **Input Validation**: Zod schema validation
-- **Tenant Isolation**: Sellers can only access their own data
-- **Webhook Verification**: Signature verification for webhooks
-- **Audit Trail**: Complete order event history
-- **Idempotency**: Safe retry handling for payments/webhooks
-
-## Production Readiness
-
-### ✅ Implemented
-
-- JWT-based authentication with secure password hashing
-- Order status transition enforcement
-- Database constraints and indexes
-- Audit trail for order changes
-- Input validation with Zod schemas
-- Webhook deduplication
-
-### ⚠️ Production Hardening Required
-
-- **Database**: Replace SQLite with PostgreSQL for production
-- **Environment Variables**: Ensure all secrets are properly configured
-- **Rate Limiting**: Implement more sophisticated rate limiting
-- **Monitoring**: Add application performance monitoring
-- **Logging**: Enhanced structured logging for production
-- **Error Handling**: Global error handling and reporting
-- **Security**: Add CSRF protection, security headers
-- **Testing**: Comprehensive test suite before production
-- **CI/CD**: Automated testing and deployment pipelines
-
-## Production Deployment
-
-### Environment Setup
-
-1. Set production environment variables
-2. Use a production database (PostgreSQL recommended)
-3. Configure proper JWT secrets
-4. Set up webhook endpoints with proper authentication
-5. Configure monitoring and logging
-
-### Database Migration
-
-```bash
-# Generate migration for production
-npx prisma migrate deploy
-
-# Generate Prisma client
-npx prisma generate
-```
-
-### Health Checks
-
-- `GET /api/health` - Basic health check (add if needed)
-
-## Testing
-
-The system includes comprehensive test coverage:
-
-- Unit tests for business logic
-- Integration tests for API endpoints
-- Security tests for tenant isolation
-- Idempotency tests for webhooks
-
-Run tests with:
-
-```bash
-npm run test
-```
-
-## Monitoring
-
-Structured logging includes:
-
-- Request IDs for tracing
-- User context in logs
-- Order and payment events
-- Error tracking
-
-## Contributing
-
-1. Follow the existing code patterns
-2. Add tests for new features
-3. Update documentation
-4. Ensure all security measures are in place
-
-## License
-
-MIT License - see LICENSE file for details
+MIT License - see LICENSE file for details.

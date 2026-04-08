@@ -44,7 +44,7 @@ async function login(loginData: unknown, request: NextRequest) {
   }
 }
 
-async function logout(request: NextRequest) {
+async function logout() {
   // In a real implementation, you might want to invalidate the token
   // For now, we'll just return a success response
   return NextResponse.json({ success: true })
